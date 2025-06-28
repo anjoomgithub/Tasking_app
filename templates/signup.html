@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Sign Up{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="card auth-card">
+        <h2>Create Account</h2>
+        <form id="signup-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group mt-1">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group mt-1">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary mt-2" style="width: 100%;">Sign Up</button>
+        </form>
+         <p style="text-align: center; margin-top: 1rem;">
+            Have an account? <a href="/login">Login</a>
+        </p>
+        <p id="message" style="text-align: center;"></p>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = e.target.username.value;
+        const email = e.target.email.value;
+        const password = e.target.password.value;
+        const response = await fetch(`${API_BASE_URL}/auth/signup/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username, email, password })
+        });
+        const messageEl = document.getElementById('message');
+        if (response.ok) {
+            messageEl.style.color = 'green';
+            messageEl.textContent = 'Signup successful! Redirecting to login...';
+            setTimeout(() => window.location.href = '/login', 2000);
+        } else {
+            messageEl.style.color = 'red';
+            messageEl.textContent = 'Signup failed. Username or email may already exist.';
+        }
+    });
+</script>
+{% endblock %}

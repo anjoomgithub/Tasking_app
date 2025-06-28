@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="sidebar">
+        <h2 id="welcome-admin">Hello Admin</h2>
+        <nav>
+            <a href="#" class="active" id="nav-add-apps">+ Add Apps</a>
+            <a href="#" id="nav-pending-tasks">Pending Tasks</a>
+        </nav>
+        <a href="#" class="logout-link" id="logout">Logout</a>
+    </div>
+
+    <div class="main-content">
+        <div id="add-apps-view">
+            <h1 class="content-header">Add a New Application</h1>
+            <div class="card">
+                <form id="add-app-form">
+                    <label for="icon" class="image-upload-box" id="icon-drop-zone">
+                        <span>Click or drag & drop app icon here</span>
+                    </label>
+                    <input type="file" id="icon" name="icon" accept="image/*" class="hidden" required>
+                    <div class="form-grid mt-2">
+                        <div class="form-group"><label for="name">App Name</label><input type="text" id="name" name="name" required></div>
+                        <div class="form-group"><label for="link">App Link</label><input type="url" id="link" name="link" placeholder="https://..." required></div>
+                        <div class="form-group"><label for="category">App Category</label><input type="text" id="category" name="category" required></div>
+                        <div class="form-group"><label for="sub_category">Sub Category</label><input type="text" id="sub_category" name="sub_category" required></div>
+                        <div class="form-group"><label for="points">Points</label><input type="number" id="points" name="points" required></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-2">ADD POINTS</button>
+                    <button type="button" class="btn btn-secondary mt-2" id="submit-btn" style="display:none;">SUBMIT</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="pending-tasks-view" class="hidden">
+            <h1 class="content-header">Pending Task Submissions</h1>
+            <div id="pending-tasks-list"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- Authentication & Setup ---
+    const user = JSON.parse(localStorage.getItem('user'));
+    const token = localStorage.getItem('authToken');
+    if (!token || !user || !user.is_staff) {
+        window.location.href = '/login';
+    }
+    document.getElementById('welcome-admin').textContent = `Hello ${user.username}`;
+    const headers = { 'Authorization': `Token ${token}` };
+
+    // --- View Switching Logic ---
+    const addAppsView = document.getElementById('add-apps-view');
+    const pendingTasksView = document.getElementById('pending-tasks-view');
+    const navAddApps = document.getElementById('nav-add-apps');
+    const navPendingTasks = document.getElementById('nav-pending-tasks');
+
+    navAddApps.addEventListener('click', (e) => { e.preventDefault(); showView('add'); });
+    navPendingTasks.addEventListener('click', (e) => { e.preventDefault(); showView('tasks'); });
+
+    function showView(viewName) {
+        addAppsView.classList.add('hidden');
+        pendingTasksView.classList.add('hidden');
+        navAddApps.classList.remove('active');
+        navPendingTasks.classList.remove('active');
+
+        if(viewName === 'add') {
+            addAppsView.classList.remove('hidden');
+            navAddApps.classList.add('active');
+        } else if(viewName === 'tasks') {
+            pendingTasksView.classList.remove('hidden');
+            navPendingTasks.classList.add('active');
+            fetchPendingTasks();
+        }
+    }
+
+    // --- Add App Form Logic ---
+    document.getElementById('add-app-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const response = await fetch(`${API_BASE_URL}/api/admin/apps/`, { method: 'POST', headers, body: formData });
+        if (response.ok) {
+            alert('App added successfully!');
+            e.target.reset();
+            document.querySelector('#icon-drop-zone span').textContent = 'Click or drag & drop app icon here';
+        } else {
+            alert('Failed to add app.');
+        }
+    });
+
+    // --- Pending Tasks Logic ---
+    async function fetchPendingTasks() {
+        const response = await fetch(`${API_BASE_URL}/api/admin/tasks/`, { headers });
+        const tasks = await response.json();
+        const listDiv = document.getElementById('pending-tasks-list');
+        listDiv.innerHTML = '';
+        if (tasks.length === 0) {
+            listDiv.innerHTML = '<div class="card"><p>No pending tasks found.</p></div>';
+            return;
+        }
+        tasks.forEach(task => {
+            listDiv.innerHTML += `
+                <div class="card mt-1">
+                    <h4>${task.app.name} - submitted by ${task.user.username}</h4>
+                    <p>Points to award: ${task.app.points}</p>
+                    <a href="${task.screenshot}" target="_blank">View Screenshot</a>
+                    <button class="btn btn-primary mt-1 approve-btn" data-task-id="${task.id}">Approve</button>
+                </div>`;
+        });
+        document.querySelectorAll('.approve-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const taskId = e.target.dataset.taskId;
+                await fetch(`${API_BASE_URL}/api/admin/tasks/${taskId}/approve/`, { method: 'PUT', headers });
+                fetchPendingTasks();
+            });
+        });
+    }
+
+    // --- File Drop Zone Logic ---
+    const dropZone = document.getElementById('icon-drop-zone');
+    const fileInput = document.getElementById('icon');
+    const promptSpan = dropZone.querySelector('span');
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; updatePrompt(); }
+    });
+    fileInput.addEventListener('change', updatePrompt);
+    function updatePrompt() {
+        if (fileInput.files.length) { promptSpan.textContent = `File selected: ${fileInput.files[0].name}`; }
+    }
+
+    // --- Logout ---
+    document.getElementById('logout').addEventListener('click', (e) => {
+        e.preventDefault();
+        localStorage.clear();
+        window.location.href = '/login';
+    });
+</script>
+{% endblock %}

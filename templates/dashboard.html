@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% block title %}User Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="sidebar">
+        <h2 id="welcome-user">Hello User</h2>
+        <nav>
+            <a href="#" class="active" id="nav-home">Home</a>
+            <a href="#" id="nav-history">Task History</a>
+        </nav>
+        <a href="#" class="logout-link" id="logout">Logout</a>
+    </div>
+
+    <main class="main-content">
+        <div id="app-list-view">
+            <h1 class="content-header">Available Tasks</h1>
+            <div class="app-list" id="app-list-container"></div>
+        </div>
+
+        <div id="task-submission-view" class="hidden">
+            <a href="#" id="back-to-list-link">&larr; Back to list</a>
+            <div class="card mt-1 task-submission-view">
+                <img id="submit-app-icon" src="" alt="App Icon" class="app-icon-large">
+                <h3 id="submit-app-name"></h3>
+                <p>Upload screenshot to complete the TASK</p>
+                <form id="task-submit-form" class="mt-2">
+                    <input type="hidden" id="submit-app-id">
+                    <label for="screenshot" class="image-upload-box" id="screenshot-drop-zone">
+                        <span>Click or drag & drop screenshot here</span>
+                    </label>
+                    <input type="file" id="screenshot" accept="image/*" class="hidden" required>
+                    <button type="submit" class="btn btn-primary mt-2" style="width:100%;">Submit Task</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="task-history-view" class="hidden">
+            <h1 class="content-header">My Task History</h1>
+            <div id="task-history-container"></div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- Auth & Setup ---
+    const user = JSON.parse(localStorage.getItem('user'));
+    const token = localStorage.getItem('authToken');
+    if (!token || !user) { window.location.href = '/login'; }
+    document.getElementById('welcome-user').innerHTML = `Hello ${user.username}<br><small style="color:var(--accent-green);">Points: ${user.points}</small>`;
+    const headers = { 'Authorization': `Token ${token}` };
+    let allApps = [];
+
+    // --- View Switching ---
+    const views = {
+        list: document.getElementById('app-list-view'),
+        submission: document.getElementById('task-submission-view'),
+        history: document.getElementById('task-history-view')
+    };
+    const navs = {
+        home: document.getElementById('nav-home'),
+        history: document.getElementById('nav-history')
+    }
+
+    function showView(viewName) {
+        Object.values(views).forEach(v => v.classList.add('hidden'));
+        Object.values(navs).forEach(n => n.classList.remove('active'));
+        views[viewName].classList.remove('hidden');
+        if(viewName === 'list') { navs.home.classList.add('active'); fetchApps(); }
+        if(viewName === 'history') { navs.history.classList.add('active'); fetchHistory(); }
+    }
+    navs.home.addEventListener('click', (e) => { e.preventDefault(); showView('list'); });
+    navs.history.addEventListener('click', (e) => { e.preventDefault(); showView('history'); });
+    document.getElementById('back-to-list-link').addEventListener('click', (e) => { e.preventDefault(); showView('list'); });
+
+    // --- App & History Fetching ---
+    async function fetchApps() {
+        const response = await fetch(`${API_BASE_URL}/api/apps/`, { headers });
+        allApps = await response.json();
+        const container = document.getElementById('app-list-container');
+        container.innerHTML = '';
+        if (allApps.length === 0) { container.innerHTML = '<div class="card"><p>No new tasks available. Great job!</p></div>'; }
+        allApps.forEach(app => {
+            const appItem = document.createElement('div');
+            appItem.className = 'app-item';
+            appItem.innerHTML = `<img src="${app.icon}" class="app-icon"><div class="app-info"><h4>${app.name}</h4><p>${app.category}</p></div><div class="points-badge">${app.points} POINTS</div>`;
+            container.appendChild(appItem);
+            appItem.addEventListener('click', () => {
+                document.getElementById('submit-app-icon').src = app.icon;
+                document.getElementById('submit-app-name').textContent = app.name;
+                document.getElementById('submit-app-id').value = app.id;
+                showView('submission');
+            });
+        });
+    }
+
+    async function fetchHistory() {
+        const response = await fetch(`${API_BASE_URL}/api/tasks/history/`, { headers });
+        const tasks = await response.json();
+        const container = document.getElementById('task-history-container');
+        container.innerHTML = '';
+        if (tasks.length === 0) { container.innerHTML = '<div class="card"><p>You have not submitted any tasks yet.</p></div>'; return; }
+        tasks.forEach(task => {
+            container.innerHTML += `<div class="app-item">
+                <img src="${task.app.icon}" class="app-icon">
+                <div class="app-info"><h4>${task.app.name}</h4><p>${new Date(task.created_at).toLocaleDateString()}</p></div>
+                <div class="points-badge">${task.status}</div>
+            </div>`;
+        });
+    }
+
+    // --- Task Submission ---
+    document.getElementById('task-submit-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('app_id', document.getElementById('submit-app-id').value);
+        formData.append('screenshot', document.getElementById('screenshot').files[0]);
+        const response = await fetch(`${API_BASE_URL}/api/tasks/`, { method: 'POST', headers: { 'Authorization': `Token ${token}` }, body: formData });
+        if (response.ok) {
+            alert('Task submitted successfully! Awaiting approval.');
+            e.target.reset();
+            showView('history');
+        } else { alert('Failed to submit. You may have already submitted this task.'); }
+    });
+
+    // --- File Drop Zone Logic ---
+    const dropZone = document.getElementById('screenshot-drop-zone');
+    const fileInput = document.getElementById('screenshot');
+    const promptSpan = dropZone.querySelector('span');
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; updatePrompt(); }
+    });
+    fileInput.addEventListener('change', updatePrompt);
+    function updatePrompt() {
+        if (fileInput.files.length) { promptSpan.textContent = `File selected: ${fileInput.files[0].name}`; }
+    }
+
+    // --- Logout ---
+    document.getElementById('logout').addEventListener('click', (e) => { e.preventDefault(); localStorage.clear(); window.location.href = '/login'; });
+
+    // --- Initial Load ---
+    showView('list');
+</script>
+{% endblock %}
